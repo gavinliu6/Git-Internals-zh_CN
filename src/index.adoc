@@ -17,6 +17,8 @@ v1
 
 == 关于
 
+NOTE: 译者注：本文档翻译自 link:https://git.harshkapadia.me[Git Internals^]，仅用于学习交流。
+
 本 PWA 应用的内容是关于 link:https://harshkapadia2.github.io/git_basics/#_git[Git^] 的内部结构的。
 
 本应用在 link:https://github.com/HarshKapadia2/git_internals[github.com/HarshKapadia2/git_internals^] 上开源。
