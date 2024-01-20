@@ -1,0 +1,395 @@
+== Git 对象
+
+=== 简介
+
+Git 有两种数据结构, 一种是可变的（mutable） link:#_index_文件[index]，用于缓存有关工作区和下次要提交的修订的信息。另一种是不变的（immutable）、只能追加的对象数据库 (link:https://harshkapadia2.github.io/git_basics/#_repository[repository^])，它包含四类对象：
+
+* Blob 对象
+* Commit 对象
+* Tree 对象
+* Tag 对象
+
+Git 使用这些对象来存储数据来以进行版本控制，通过理解这些对象可以理解 Git 的内部工作原理。
+
+本节将通过一个示例来探讨 Git 内部工作的部分内容。
+
+NOTE: 接下来，请跟随我们的脚步随时使用 link:https://git-graph.harshkapadia.me[Git Graph^] 创建图解。
+
+运行 `git init`` 在 `inside_git` 目录（根目录）中初始化一个空 link:https://harshkapadia2.github.io/git_basics/#_repository[仓库^]，Git 在根目录中会创建一个隐藏目录 `.git`。
+
+image::git-init.jpg[alt="git init", 600, 600]
+
+命令 `du -c` 用于列出 `inside_git` 的子目录及其占用的磁盘大小（以 kbs 为单位）。
+
+image::du-c-1.jpg[alt="du -c", 600, 600]
+
+=== `blob` 对象
+
+NOTE: Blob 对象存储了文件的内容。
+
+在根目录下创建一个文件。
+
+image::touch-master_file_1.jpg[alt="Create new file", 600, 600]
+
+现在，工作树（根目录）包含了 `.git` 目录和新文件 `master_file_1.txt`。
+
+image::ls-a-1.jpg[alt="Master File", 600, 600]
+
+使用 `git add .` 命令将新文件添加到 link:https://harshkapadia2.github.io/git_basics/#_staging_staging_areaindex[暂存区^]，然后再次运行 `du -c`。
+
+image::du-c-2.jpg[alt="Stage file", 600, 600]
+
+注意一个新目录 `e6` 被添加到了 `.git/objects` 目录下。
+
+使用 `dir` (或 `ls`) 命令来看下 `.git/objects/e6` 目录下的文件。
+
+image::dir-1.jpg[alt="Create new directory", 600, 600]
+
+[.word-break-all]
+文件名 `9de29bb2d1d6434b8b29ae775ad8c2e48c5391` 38 个字符长。将其附加到文件夹名称 (`e6`) 后，就变成了 40 个字符的字符串 `e69de29bb2d1d6434b8b29ae775ad8c2e48c5391`，这是一个 link:https://harshkapadia2.github.io/git_basics/#_SHA-1[SHA-1 哈希^]。Git 使用 SHA-1 算法对文件内容（以及其他相关数据）进行哈希处理，生成 40 个字符的十六进制字符串。对于每一个 link:https://harshkapadia2.github.io/git_basics/#_git_add[暂存^]，[commit] 和 [tag] 都会生成自己唯一的 SHA-1 哈希值。（作为 40 个字符的字符串，哈希冲突非常罕见。）哈希值的前两个字符用于将哈希值归类到文件夹中，以减少访问时间。**为了方便起见，Git 有时只使用对象哈希值的 4 到 8 个字符。**
+
+如前所述，Git 会对文件内容以及其他细节进行散列处理，生成一个 40 个字符的 SHA-1 哈希值。为了验证这一点，我们需要在文件中添加一些内容，然后再次把文件添加到暂存区。(这将产生另一个哈希）。
+
+image::add-to-master_file_1-1.jpg[alt="Add to Master file", 600, 600]
+image::edit-master_file_1-1.jpg[alt="Edit master file", 600, 600]
+
+[.word-break-all]
+从上图中的最后一条命令可以推断，一个新的哈希值 `1a3851c172420a2198cf8ca6f2b776589d955cc5` 生成了。使用 cat 命令检查其内容：
+
+image::cat-1.jpg[alt="Check contents", 600, 600]
+
+可以看到其输出是乱码，因为 Git 使用 link:https://www.zlib.net[zlib^] 库压缩文件内容（以及一些附加数据），然后将其存储在文件中。因此，为了弄懂这些乱码是什么意思，我们需要解压缩文件的内容。
+
+image::decompress-file.png[alt="Decompress", 600, 600]
+
+可以看到，这个哈希文件的内容是 `blob 16\0Git is amazing!\n`。(`\0` 和 `\n` 不可见，下文会对其解释。)
+
+将这段内容拆开来看：
+
+* *`blob`* 是文件的对象类型，它是 'Binary Large OBject' 的缩写。这种对象 (文件) 存储了文件的内容。
+* `16` 是文件的尺寸（长度）。`Git is amazing!` 由 15 个字符组成, 然而 link:https://harshkapadia2.github.io/cli/terminal.html#:~:text=It%20can%20be%20used%20to%20add%20text%20to%20a%20file%20using%20the%20output%20redirection%20operator[`echo` 命令] 在文本的末尾添加了一个换行符 (`\n`)，因此其长度是 16。
+* 就像在输出中看不到 `\n` 字符一样，在长度和文件内容之间有一个 NULL 字符 (`\0`)。
+* `Git is amazing!\n` 是文件内容 (`\n` 不可见)。
+
+[NOTE.word-break-all]
+====
+如果 `blob 16\0Git is amazing!\n` 是使用 SHA-1 哈希的, 那么下面也会生成相同的哈希值 (`1a3851c172420a2198cf8ca6f2b776589d955cc5`)：
+
+image::sha1sum.png[alt="Generating hash for the string", 600, 600]
+====
+
+**综上，Git 使用 `<object_type> <content_length>\0<file_content>` 这个字符串格式来生成文件的哈希值，然后将其压缩后存在文件中。** (文件名是生成的 40 个字符哈希值的最后 38 个字符，前两个字符则用于存储它的文件夹名。)
+
+NOTE: Blob 对象不存储文件的差异化内容（ diff/delta），而是存储文件的完整内容。
+
+[TIP]
+====
+使用 `cat` 命令查看文件内容的过程非常繁琐，我们最好使用 Git 提供的 `git cat-file` [底层命令] 命令。
+
+将使用的 git cat-file 命令的变体
+
+接下来要使用 `git cat-file` 的几种形式：
+
+* `git cat-file -p <hash>` (-p = pretty print) 用于显示文件内容。
+* `git cat-file -t <hash>` (-t = type) 用于显示文件对象类型 (blob, commit, tree 或 tag)。
+* `git cat-file -s <hash>` (-s = size) 用于显示文件尺寸。
+====
+
+=== `commit` 对象
+
+NOTE: Commit 对象将若干个 tree 对象链接成一个历史记录，它包含了一个 tree 对象（顶级源目录）的名称，一个时间戳，一条日志信息以及 0 个或多个父 commit 对象的名称。
+
+提交 `master_file_1.txt`，然后再次运行 `du -c`。
+
+image::commit-master_file_1-1.jpg[alt="Commit master file", 600, 600]
+
+从上图可以看到，有两个新目录 `.git/objects/1b` 和 `.git/objects/d5` 被创建了。而且，文件被提交后，Git 输出了这个提交的哈希值的前 7 个字符。
+
+以这 7 个字符为参，用 `git cat-file -t` 命令检查文件类型：
+
+image::cat-file-t-1.jpg[alt="Plumbing commands", 600, 600]
+
+文件类型正是 `commit`，从而可知该文件是通过一个提交生成的。
+
+使用 `git cat-file -p` 命令输出这个 commit 对象的内容如下：
+
+image::cat-file-p-1.jpg[alt="Commit", 600, 600]
+
+Commit 对象的内容解析：
+
+[.word-break-all]
+* `tree 1b2190cdc2801ec3df6505dc351dee878ac7f2fc` 是生成的另一个 SHA-1 哈希值（还记得提交文件时在 `.git/objects` 生成的两个目录吧），其对象类型是 `tree`，它就是当前仓库状态的 [快照（snapshot）]。
+* link:#_父提交[父提交的 SHA-1 哈希]（此处不存在，下面会解释。）
+* 下一行是作者的详细信息 (写代码的人)：
+    ** 姓名
+    ** 邮箱 ID
+    ** 时间戳
+* 下一行是提交者的详细信息 (提交代码的人):
+    ** 姓名
+    ** 邮箱 ID
+    ** 时间戳
+* 提交信息
+* 提交描述 (如果提供的话，这里没有。)
+
+=== `tree` 对象
+
+NOTE: 一个树对象就相当于一个（子）目录：它包含一个文件名列表，每个文件名都有一些类型位和一个 blob 或 tree 对象的名称，即这个文件、符号链接或目录的内容。这种对象描述了源目录树的一个快照。
+
+让我们看一下在 commit 对象（文件）中列出的 tree 文件的内容：
+
+image::cat-file-p-2.jpg[alt="Check contents", 600, 600]
+
+**Tree 对象类型的文件包含了本地仓库在一个快照（当前状态）中的文件和目录条目。**每行的格式是相同的。
+
+Tree 对象的内容格式如下：
+
+* `100644` 表示文件的模式，是一个八进制数。
++
+[source, plaintext]
+----
+Octal: 100644
+Binary: 001000 000 110100100
+----
+
+	** 前 6 个二进制位表示文件类型。
+		*** `001000` 代表普通文件 (如本例所示)。
+		*** `001010` 代表 link:https://tdongsi.github.io/blog/2016/02/20/symlinks-in-git[符号链接^].
+		*** `001110` 代表 a link:https://www.oreilly.com/library/view/version-control-with/9780596158187/ch15s04.html#:~:text=gitlink[gitlink^].
+	** 接下来的 3 个二进制位 (`000`) 暂未使用。
+	** 最后 9 个二进制位 (`110100100`) 表示 link:https://harshkapadia2.github.io/cli/terminal.html#changing-permissions[Unix 文件权限^]。
+		*** `644` 和 `755` 对于普通文件有效。
+		*** 对于符号链接和 gitlinks 这 9 位的值都是 `0`。
+* `blob` 标识对象类型 (link:#_新建目录[也可以是 `tree` 对象] 下文会解释。)
+
+[.word-break-all]
+* `1a3851c172420a2198cf8ca6f2b776589d955cc5` 是文件 SHA-1 哈希值。
+* 文件名称。
+
+**综上，每个 commit 对象都指向一个 tree 对象，每个 tree 对象都指向若干 blob 以及/或 tree 对象，分别对应具体的文件和子目录。**
+
+目前，commit、tree 和 blob 文件的连接关系如下所示：（link:#_head_文件[`HEAD`] 只是一个指向最新提交的指针。）
+
+image::connection-graph-1.png[alt="Connection graph", 600, 600]
+
+[NOTE]
+====
+* Blob `e69de` 已经被更新为 `1a385` 了，因此它没有被连接到 tree `1b219`。对于每个已添加文件来说，只有其最新的 blob 才连接到一个伴随 commit 产生的新 tree 对象上。
+* 上图可以使用 link:https://git-graph.harshkapadia.me[Git Graph^] 创建。
+====
+
+=== 父提交
+
+再新建一个文件 (`master_file_2.txt`)，暂存并提交。
+
+image::touch-master_file_2.jpg[alt="Create master file", 600, 600]
+
+看下 commit 对象类型文件的内容（使用上图中的部分哈希 `8282663`）：
+
+image::cat-file-p-3.jpg[alt="Create another master file", 600, 600]
+
+[.word-break-all#_dag]
+可以看到一个新行 `parent d5b8f77ce1dc1a37b29885026055c8656c3e0b65` 出现了。记着，这是前一个提交的哈希。**Git 因此又创建了一个关系图，准确地说，应该是有向无环图。**（图在下面）
+
+而且，link:#_head_文件[`HEAD`] 会自动指向这个最新的提交 `82826`，而不是父提交（前一个-`d5b8f`）。看下 `HEAD` 的指向来验证下：
+
+image::head-1.jpg[alt="HEAD", 600, 600]
+
+它确实指向最新提交 (`82826`)。
+
+现在再看下最新提交指向的 tree 对象文件的内容：
+
+image::cat-file-p-4.jpg[alt="Contents of tree", 600, 600]
+
+Commit 对象，tree 对象以及 HEAD 的最新关系连接图如下所示：
+
+image::connection-graph-2.png[alt="Connection graph", 600, 600]
+
+NOTE: 该图可以使用 link:https://git-graph.harshkapadia.me[Git Graph^] 创建。
+
+=== 新建目录
+
+在 (`dir_1`) 目录下新建一个文件 (`master_dir_1_file_3.txt`)，暂存并提交，然后看下 commit 对象类型文件的内容：
+
+image::mkdir_1.jpg[alt="Create new file in directory", 600, 600]
+
+该文件内功的格式与 link:#_commit_对象:~:text=Commit%20对象的内容解析：[上文介绍的相同]。
+
+Tree 文件（上图中的哈希 `f6a65`）的内容如下：
+
+image::cat-file-p-5.jpg[alt="Contents of tree", 600, 600]
+
+令人惊讶的是，树 `f6a65` 指向另一棵树 `abecf`！新树的名称是 `dir_1`。
+
+再看下 `dir_1` 树的内容：
+
+image::cat-file-p-6.jpg[alt="Contents of directory tree", 600, 600]
+
+它指向 `dir_1` 目录下的文件 (`master_dir_1_file_3.txt`)。
+
+来看下树 `f6a65` 是如何与其他树和 blob 建立连接的：
+
+image::tree-1.png[alt="Tree", 600, 600]
+
+目前仓库的关系图是：
+
+image::connection-graph-3.png[alt="Connection Graph", 600, 600]
+
+NOTE: 该图可以使用 link:https://git-graph.harshkapadia.me[Git Graph^] 创建。
+
+=== 重命名文件
+
+将 `master_file_1.txt` 重命名为 `the_master_file.txt` 来看下 Git 内部是如何处理它的。
+
+image::mv-1.jpg[alt="Rename file", 600, 600]
+
+image::add-1.jpg[alt="Stage", 600, 600]
+
+提交文件时，Git 会识别出文件已重命名，而不是新建一个文件，如上图最后一行所示。之所以能识别到文件重命名，是因为文件的 SHA-1 哈希值没有变化（因为文件内容没有变化）。
+
+Check the contents of the commit and tree files.
+
+image::cat-file-p-7.jpg[alt="Contents of commit", 600, 600]
+
+从最后一行可以看出，哈希 `1a385` 与原始文件相同（文件名是 `master_file_1.txt`）。**Git 只是在 commit 指向的树文件中记录了已经变更后的文件名称，而不是新建一个 blob 文件。**这就是 Git 高效的空间管理！
+
+当前仓库的结构如下所示：
+
+image::connection-graph-4.png[alt="Connection Graph", 800, 800]
+
+NOTE: 该图可以使用 link:https://git-graph.harshkapadia.me[Git Graph^] 创建。
+
+=== 修改大文件
+
+添加图像并将其提交到 Git。图像的大小为 1.374Mb（或 1374kb），因此与其他文件（约 1 kb/文件）相比，它是一个相对较大的文件。
+
+image::add-2.jpg[alt="Stage", 600, 600]
+
+image::cat-file-p-8.jpg[alt="Commit", 600, 600]
+
+稍微修改下图片文件的内容，然后再次暂存并提交。
+
+image::add-3.jpg[alt="Stage and commit", 600, 600]
+
+`master_image_1.png` 在最新树 `6d2d2` 和先前的树 `27666` 中的 SHA-1 哈希并不相同，因此 Git 为这个示例文件先后创建了两个不同的 blob 对象（`ca893` 和 `1f7af`），即便它们之间只存在细微的差别。
+
+现在运行 `du -c`：
+
+image::du-c-3.jpg[alt="Du -c", 600, 600]
+
+从上图可以看到，这两个目录 (`.git/objects/1f` 和 `.git/objects/ca`) 的大小一样 (1376 kb)。
+
+NOTE: 目录内容的大小 (1376 kb) 大于图像大小 (1374 kb)，因为 Git 将文件类型和大小（长度）添加到 blob 文件后才对其进行哈希处理。
+
+那么 Git 处理大型文件的效率就低吗？当然不是。文件的内容发生了变化，产生的 SHA-1 哈希值（`1f7af`）与原来的 SHA-1 哈希值（`ca893`）不同，因此 Git 无法像处理重命名文件那样简单来处理这种变化。在本地版本库中拥有如此巨大的文件的多个副本并不是问题，但从 GitHub 等平台 link:https://harshkapadia2.github.io/git_basics/#_git_push[推送^] 和 link:https://harshkapadia2.github.io/git_basics/#_git_pull[拉取^] 则会占用大量带宽。为了避免这种情况，Git 使用了 **Delta Compression** 技术，它会存储旧文件与新文件的差异（diff），并将新文件作为父文件。这一点将在下面的小节中讨论。
+
+=== `pack` 目录
+
+[source, shell]
+----
+.git
+├───...
+└───objects
+    ├───...
+    └───pack
+        ├───multi-pack-index
+        ├───<*.idx>
+        └───<*.pack>
+----
+
+每次执行 `clone`、`push` 或 `pull`，或者运行垃圾收集 (`git gc`) 时，都会执行**增量压缩（Delta compression）**。
+
+增量压缩会在 `.git/objects/pack` 目录下创建两种类型的文件。
+
+* 若干 Pack (`.pack`) 文件
+* 若干 Index (`.idx`) 文件
+
+[NOTE]
+====
+* 一个仓库可以有多个 Packfiles。
+* 每个 Packfile 对应一个 Index 文件。
+* 在极端情况下也可能会创建 link:https://www.git-scm.com/docs/multi-pack-index[`multi-pack-index` (MIDX) 文件^]，但这里不考虑。
+====
+
+仓库的当前状态：
+
+image::du-c-3.jpg[alt="Du -c", 600, 600]
+
+注意上图中 `.git/objects/pack` 目录的大小是 0kb。
+
+垃圾回收（`git gc`）可以用来执行增量压缩，之后用 `du -c` 来观察变化。
+
+image::du-c-4.jpg[alt="Du -c", 600, 600]
+
+请注意，上图中 `.git/objects/pack` 的大小从 0kb 变成了 1380kb，`.git/objects` 中的很多文件也消失了，只留下了 `.git/objects/e6`。
+
+NOTE: `.git` 目录的总大小从 4220kb（见本小节的第一个 `du -c` 图像）减少到 2838kb（如上图所示），**这使得本地仓库的大小减少了 32.75%**！
+
+The contents of `.git/objects/pack`
+
+image::dir-2.jpg[alt="Content of directory", 600, 600]
+
+As mentioned above, two types of files (a pack `.pack` file and an index `.idx` file) are created in `.git/objects/pack`.
+
+Check the contents of the Packfile using the plumbing command `git verify-pack -v path/to/pack/file/<file_name>.pack` (`-v` = verbose).
+
+image::verify-pack-1.jpg[alt="Contents of files", 600, 600]
+
+From the above image, it can be understood that **the Packfile contains all the Git objects**. The Pack file is a file that contains all the Git Objects (along with their content) stored in it link:https://codewords.recurse.com/issues/three/unpacking-git-packfiles[in a particular format^]. All the objects stored in the Packfile are removed from the `.git/objects` directory.
+
+From the above image, it can also be understood that the size of the newly modified image (hash `1f7af`) is very large in comparison to the original image (hash `ca893`). The blob of the original image (hash `ca893`) also has the hash of the modified image (`1f7af`) mentioned after it, indicating that its parent is the newly modified image file (hash `1f7af`). Thus **Git stored the entire new file and only a diff/delta for the older file with a pointer to the newer file, rather than storing the entire file again, making it space efficient.**
+
+NOTE: The newer file (hash `1f7af`) will usually be accessed more than the older one (hash `ca893`), so storing the entirety of the newer file and a delta/diff for the older one makes more sense than storing the entirety of the old file and a delta/diff for the new one. As the newer file will usually be accessed more, it would be inefficient to apply the delta/diff of the newer file to the entirety of the older file to generate the newer file every time. It is cheaper to apply the delta/diff of the older file to the entirety of the newer file, as the older file won't be accessed as frequently.
+
+[NOTE]
+====
+* The pack file has a graph in it just like link:#_dag[the Directed Acyclic Graph that the Commit, Tree and Blob objects form].
+* The Index (`.idx`) file contains offsets into its corresponding Pack (`.pack`) file so that a specific object can be found quickly.
+* link:https://codewords.recurse.com/issues/three/unpacking-git-packfiles#:~:text=each%20object%20begins.-,IDX%20files,-While%20it%E2%80%99s%20possible[The Index (`.idx`) file has its own file structure.^]
+* Do not confuse these `.idx` Index files with link:#_the_index_file[the staging area `index` file]. They are not related.
+====
+
+On running aggressive Garbage Collection (`git gc --aggressive`), Git got rid of all the files in `.git/objects` **that were referenced in a tree** and added them to the Pack file. The `.git/objects/e6` directory did not get removed as it was not referenced (listed) in any link:#_the_tree_object[Tree Object].
+
+As mentioned at the start of this sub-section, these Packfiles and Index files are created every time a clone, push or pull is executed, or if Garbage Collection (`git gc`) is run. Why is this so? Network bandwidth and clone/push/pull command execution time are the main reasons. Applying Delta compression and putting in all objects into one file makes it simpler and faster to transfer data over the Network and also saves storage space (~32% space was saved through packing in this case).
+
+Take a look at the log of the repository.
+
+image::log-1.jpg[alt="Log of repository", 600, 600]
+
+NOTE: Further reading on Packfiles can be found in the link:#_packfiles[Resources section].
+
+=== 空提交
+
+link:https://harshkapadia2.github.io/git_basics/#_allow_empty[`git commit`^ 的 `--allow-empty` 选项] 允许创建不含有任何文件变更的提交记录。
+
+由于空提交没有对任何文件进行更改，因此它们始终指向 link:https://harshkapadia2.github.io/git_basics/#_branches[分支^] 中 **最新** 的 link:#_tree_对象[树对象]。
+
+为了说明这一点，请使用以下命令设置仓库：
+
+[source, shell]
+----
+$ git init
+$ touch file_1.txt
+$ git add .
+$ git commit -m "Add file_1.txt"
+$ git commit --allow-empty -m "Empty commit #1"
+$ git commit --allow-empty -m "Empty commit #2"
+
+# Now run
+$ git log --oneline --graph
+* 208cead (HEAD -> main) Empty commit #2
+* 64cf914 Empty commit #1
+* be0c1ec Add file_1.txt
+----
+
+Use the `git cat-file -p <hash>` command as done in previous sub-sections to create the graph.
+
+上面仓库的图解如下：
+
+image::connection-graph-5.png[alt="Connection Graph", 600, 600]
+
+[NOTE]
+====
+* 如果空提交是存储库中的第一个提交（初始提交），那么它将有自己的空树对象与之关联。在所有其他情况下，空提交将指向分支中最新的树对象。
+* 该图可以使用 link:https://git-graph.harshkapadia.me[Git Graph^] 创建。
+====
